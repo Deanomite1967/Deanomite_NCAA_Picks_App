@@ -122,7 +122,7 @@ def predict_games_ncaaf(model, df, feature_cols):
     vegas_margin = df["spread_value"]
 
     # 70/30 blend (NFL-style)
-    df["model_pred"] = (0.7 * raw_pred) + (0.3 * vegas_margin)
+    df["model_pred"] = (0.4 * raw_pred) + (0.6 * vegas_margin)
 
     # ATS edge using blended prediction
     df["edge"] = df["model_pred"] - df["spread_value"]
@@ -317,7 +317,7 @@ def get_week_picks_multiweek_ncaaf(week_number):
     vegas_margin = feats["spread_value"]
 
     # 70/30 blend (NFL-style)
-    feats["model_pred"] = (0.7 * raw_pred) + (0.3 * vegas_margin)
+    feats["model_pred"] = (0.4 * raw_pred) + (0.6 * vegas_margin)
 
     # ATS edge using blended prediction
     feats["edge"] = feats["model_pred"] - feats["spread_value"]
