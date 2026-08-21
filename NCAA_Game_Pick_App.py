@@ -364,9 +364,9 @@ current_week = 1
 completed_week = 0
 
 for wk in range(1, 19):
-    if os.path.exists(f"Week{wk}_Spreads.csv"):
+    if os.path.exists(f"data/Week{wk}_Spreads.csv"):
         current_week = wk
-    if os.path.exists(f"Week{wk}_Results.csv"):
+    if os.path.exists(f"data/Week{wk}_Results.csv"):
         completed_week = wk
 
 week_number = current_week
