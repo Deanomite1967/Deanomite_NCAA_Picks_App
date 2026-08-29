@@ -3,7 +3,7 @@ import pandas as pd
 import os
 
 st.set_page_config(page_title="NCAA Year Summary", page_icon="📈", layout="wide")
-st.title("📈 NCAA Season Summary")
+st.title("📈 2026' NCAA Season Summary")
 
 st.write("Season‑to‑date ATS performance based on all available weekly NCAA results.")
 
