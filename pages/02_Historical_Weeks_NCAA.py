@@ -4,7 +4,7 @@ import os
 from io import BytesIO
 
 st.set_page_config(page_title="Historical NCAA Weeks", page_icon="📊", layout="wide")
-st.title("📊 Historical NCAA Results")
+st.title("📊 2026' Historical NCAA Results")
 
 st.write("View past weekly NCAA results (actual scores, margins, and ATS outcomes).")
 
