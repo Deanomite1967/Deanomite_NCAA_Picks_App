@@ -395,7 +395,7 @@ default_week = max(available_weeks)
 import streamlit as st
 
 st.set_page_config(page_title="NCAA Model Picks", page_icon="🏈", layout="wide")
-st.title("🏈 Deanomites NCAA Weekly Picks Engine")
+st.title("🏈 Deanomites 2026' NCAA Weekly Picks")
 
 # -----------------------------------------
 # Auto-detect latest completed week
