@@ -419,7 +419,7 @@ if run_button:
     # ---------------------------------------------------------
     # Build training data for PRIOR WEEK (not current week)
     # ---------------------------------------------------------
-    if week_number > 0:
+    if week_number > -1:
         prev_week = week_number - 1
         training_df = build_training_data_ncaaf(prev_week)
 
