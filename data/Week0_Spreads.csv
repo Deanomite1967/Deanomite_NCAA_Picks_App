@@ -9,5 +9,5 @@ Hawaii,Stanford,4,48.5
 Stanford,Hawaii,-4,48.5
 New Mexico State,Florida State,31.5,53.5
 Florida State,New Mexico State,-31.5,53.5
-Memphis,Nevada-Las Vegas,4,56.5
-Nevada-Las Vegas,Memphis,-4,56.5
+Memphis,UNLV,4,56.5
+UNLV,Memphis,-4,56.5
