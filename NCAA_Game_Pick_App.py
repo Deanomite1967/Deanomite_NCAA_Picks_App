@@ -1,0 +1,553 @@
+import os
+import pandas as pd
+import streamlit as st
+
+BASE = os.path.dirname(__file__)
+DATA = os.path.join(BASE, "data")
+
+# Ensure data folder exists
+if not os.path.exists(DATA):
+    os.makedirs(DATA)
+
+TEAM_MASTER_PATH = os.path.join(DATA, "team_master.csv")
+
+# Ensure team_master exists
+if not os.path.exists(TEAM_MASTER_PATH):
+    print("CREATING TEAM MASTER NOW...")
+
+    off = pd.read_csv(os.path.join(DATA, "2025_Team_Offense.csv"))
+    defn = pd.read_csv(os.path.join(DATA, "2025_Team_Defense.csv"))
+    met = pd.read_csv(os.path.join(DATA, "2025_Team_Metrics.csv"))
+
+    for df in [off, defn, met]:
+        df["School"] = df["School"].str.strip().str.lower()
+
+    team = (
+        off.merge(defn, on="School", suffixes=("_off", "_def"))
+           .merge(met, on="School")
+    )
+
+    team.to_csv(TEAM_MASTER_PATH, index=False)
+    print("TEAM MASTER CREATED.")
+
+# --- Load team-level NCAA data ---
+team_master_ncaaf = pd.read_csv(TEAM_MASTER_PATH)
+team_master_ncaaf["School"] = team_master_ncaaf["School"].str.strip().str.lower()
+
+#st.write("TEAM MASTER COLUMNS:", team_master_ncaaf.columns.tolist())
+#st.dataframe(team_master_ncaaf.head())
+
+
+
+#print("BASE DIR:", BASE)
+#print("DATA DIR:", DATA)
+#print("DATA EXISTS:", os.path.exists(DATA))
+#print("OFFENSE EXISTS:", os.path.exists(os.path.join(DATA, "2025_Team_Offense.csv")))
+#print("DEFENSE EXISTS:", os.path.exists(os.path.join(DATA, "2025_Team_Defense.csv")))
+#print("METRICS EXISTS:", os.path.exists(os.path.join(DATA, "2025_Team_Metrics.csv")))
+
+if not os.path.exists(DATA):
+    os.makedirs(DATA)
+
+TEAM_MASTER_PATH = os.path.join(DATA, "team_master.csv")
+
+#st.write("BASE DIR:", BASE)
+#st.write("DATA DIR:", DATA)
+#st.write("DATA EXISTS:", os.path.exists(DATA))
+#st.write("TEAM MASTER EXISTS:", os.path.exists(TEAM_MASTER_PATH))
+
+
+def load_week_spreads_ncaaf(week_number):
+    path = os.path.join(DATA, f"Week{week_number}_Spreads.csv")
+    df = pd.read_csv(path)
+
+    df["Team"] = df["Team"].str.strip().str.lower()
+    df["Opp"]  = df["Opp"].str.strip().str.lower()
+
+    df["spread_value"] = pd.to_numeric(df["Spread"], errors="coerce")
+    df["total_value"]  = pd.to_numeric(df["Total"], errors="coerce")
+    return df
+
+
+def merge_matchups_ncaaf(games, team_master):
+    # Merge TEAM stats
+    df = games.merge(
+        team_master.rename(columns={col: f"{col}_team" for col in team_master.columns}),
+        left_on="Team",
+        right_on="School_team",
+        how="left"
+    ).drop(columns=["School_team"])
+
+    # Merge OPP stats
+    df = df.merge(
+        team_master.rename(columns={col: f"{col}_opp" for col in team_master.columns}),
+        left_on="Opp",
+        right_on="School_opp",
+        how="left"
+    ).drop(columns=["School_opp"])
+
+    return df
+
+
+
+def create_features_ncaaf(df):
+
+    # SRS diffs
+    df["tsrs_diff"] = df["TSRS_team"] - df["TSRS_opp"]
+    df["osrs_diff"] = df["OSRS_team"] - df["OSRS_opp"]
+    df["dsrs_diff"] = df["DSRS_team"] - df["DSRS_opp"]
+
+    # Efficiency diffs
+    df["pypa_diff"] = df["PYPA_team"] - df["PYPA_opp"]
+    df["rypa_diff"] = df["RYPA_team"] - df["RYPA_opp"]
+
+    # Offense points diff
+    df["pts_off_diff"] = df["Pts_off_team"] - df["Pts_off_opp"]
+
+    # Defense points diff
+    df["pts_def_diff"] = df["Pts_def_team"] - df["Pts_def_opp"]
+
+    # Weighting
+    df["tsrs_diff"] *= 1.0
+    df["osrs_diff"] *= 1.5
+    df["dsrs_diff"] *= 1.5
+    df["pypa_diff"] *= 0.5
+    df["rypa_diff"] *= 0.5
+    df["pts_off_diff"] *= 0.75
+    df["pts_def_diff"] *= 0.75
+
+    return df
+
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
+
+def train_model_ncaaf(df):
+    feature_cols = [
+        "tsrs_diff", "osrs_diff", "dsrs_diff",
+        "pypa_diff", "rypa_diff",
+        "pts_off_diff", "pts_def_diff"
+    ]
+
+    X = df[feature_cols]
+    y = df["spread_value"]
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.25, random_state=42
+    )
+
+    model = Pipeline([
+        ("scaler", StandardScaler()),
+        ("rf", RandomForestRegressor(
+            n_estimators=500,
+            max_depth=12,
+            random_state=42
+        ))
+    ])
+
+    model.fit(X_train, y_train)
+    return model, feature_cols
+
+
+def predict_games_ncaaf(model, df, feature_cols):
+    # Raw model prediction (predicted margin)
+    raw_pred = model.predict(df[feature_cols])
+
+    # Vegas margin = spread_value
+    vegas_margin = df["spread_value"]
+
+    # 70/30 blend (NFL-style)
+    df["model_pred"] = (0.6 * raw_pred) + (0.4 * vegas_margin)
+
+    # ATS edge using blended prediction
+    df["edge"] = df["model_pred"] - df["spread_value"]
+
+    return df
+
+def add_recommended_pick_ncaaf(df):
+    return add_recommended_pick(df)  # reuse
+
+def add_recommended_pick(df):
+    picks = []
+
+    for _, row in df.iterrows():
+        team = row["Team"]          # AWAY team
+        opp = row["Opp"]            # HOME team (corrected)
+        vegas = row["spread_value"]
+        model = row["model_pred"]
+        edge = row["edge"] if "edge" in row else (model - vegas)
+
+        # ---------------------------------------------
+        # HOME TEAM IS OPP  (corrected)
+        # ---------------------------------------------
+        home_team = opp
+        away_team = team
+
+        # ---------------------------------------------------------
+        # Determine if HOME is favorite
+        #
+        # Spread is from AWAY perspective:
+        #   vegas < 0  → AWAY favored
+        #   vegas > 0  → HOME favored
+        # ---------------------------------------------------------
+        home_is_fav = vegas > 0
+
+        # ---------------------------------------------------------
+        # NEW RULE (Corrected):
+        # If HOME TEAM (Opp) is favorite AND edge is within ±3,
+        # ALWAYS pick the HOME TEAM (Opp)
+        # ---------------------------------------------------------
+        if home_is_fav and abs(edge) <= 3.5:
+            pick_side = home_team
+            pick_spread = -vegas      # flip spread to home perspective
+            picks.append(f"{pick_side} {pick_spread:+.1f}")
+            continue
+
+        # ---------------------------------------------------------
+        # DEFAULT MODEL LOGIC
+        # ---------------------------------------------------------
+        if model < vegas:
+            pick_side = team
+            pick_spread = vegas
+        else:
+            pick_side = opp
+            pick_spread = -vegas
+
+        picks.append(f"{pick_side} {pick_spread:+.1f}")
+
+    df["recommended_pick"] = picks
+    return df
+
+
+def confidence_tiers_ncaaf(df):
+    labels = []
+
+    for _, row in df.iterrows():
+        spread = row["spread_value"]
+        team = row["Team"]      # AWAY
+        opp = row["Opp"]        # HOME
+        edge = row["edge"]
+        pick = row["recommended_pick"]
+
+        # -----------------------------
+        # Favorite side (away perspective)
+        # -----------------------------
+        if spread < 0:
+            favorite = team      # away favorite
+            underdog = opp
+        elif spread > 0:
+            favorite = opp       # home favorite
+            underdog = team
+        else:
+            favorite = None
+            underdog = None
+
+        # -----------------------------
+        # Which side did we actually pick?
+        # -----------------------------
+        pick_team = None
+        if isinstance(pick, str):
+            if pick.startswith(team):
+                pick_team = team
+            elif pick.startswith(opp):
+                pick_team = opp
+
+        if favorite is None or pick_team is None:
+            pick_is_fav = None
+        else:
+            pick_is_fav = (pick_team == favorite)
+
+        # -----------------------------
+        # Edge magnitude → strength
+        # -----------------------------
+        abs_edge = abs(edge)
+
+        if abs_edge < 1:
+            base = "No Model Edge"
+        elif abs_edge < 3:
+            base = "Lean"
+        else:
+            base = "Bet"
+
+        # -----------------------------
+        # Final label
+        # -----------------------------
+        if pick_is_fav is None or base == "No Model Edge":
+            labels.append(base)
+        else:
+            labels.append(f"{base} Favorite" if pick_is_fav else f"{base} Underdog")
+
+    df["confidence"] = labels
+    return df
+
+def load_week_results_ncaaf(week_number):
+    if week_number < 0:
+        return None
+
+    path = os.path.join(DATA, f"Week{week_number}_Results.csv")
+    if not os.path.exists(path):
+        return None
+
+    df = pd.read_csv(path)
+
+    df["actual_margin"] = df["TeamScore"] - df["OppScore"]
+    df["cover_flag"] = (df["actual_margin"] > df["spread_value"]).astype(int)
+
+    return df
+
+def build_training_data_ncaaf(week_number):
+    if week_number < 0:
+        return None
+
+    spreads = load_week_spreads_ncaaf(week_number)
+    results = load_week_results_ncaaf(week_number)
+
+    if results is None:
+        return None
+
+    df = spreads.merge(results, on=["Team", "Opp"], how="inner")
+    return df
+
+
+
+def build_season_training_ncaaf(up_to_week):
+    frames = []
+
+    for wk in range(0, up_to_week):
+        df = build_training_data_ncaaf(wk)
+        if df is not None:
+            frames.append(df)
+
+    if len(frames) < 0:
+        return None
+
+    return pd.concat(frames, ignore_index=True)
+
+def train_multiweek_model_ncaaf(up_to_week):
+    season_df = build_season_training_ncaaf(up_to_week)
+    if season_df is None:
+        return None, None
+
+    # Normalize names
+    season_df["Team"] = season_df["Team"].str.strip().str.lower()
+    season_df["Opp"]  = season_df["Opp"].str.strip().str.lower()
+    team_master_ncaaf["School"] = team_master_ncaaf["School"].str.strip().str.lower()
+
+    # TEAM merge
+    season_df = season_df.merge(
+        team_master_ncaaf.rename(columns={col: f"{col}_team" for col in team_master_ncaaf.columns}),
+        left_on="Team",
+        right_on="School_team",
+        how="left"
+    ).drop(columns=["School_team"])
+
+    # OPP merge
+    season_df = season_df.merge(
+        team_master_ncaaf.rename(columns={col: f"{col}_opp" for col in team_master_ncaaf.columns}),
+        left_on="Opp",
+        right_on="School_opp",
+        how="left"
+    ).drop(columns=["School_opp"])
+
+    # Compute diffs
+    season_df["tsrs_diff"] = season_df["TSRS_team"] - season_df["TSRS_opp"]
+    season_df["osrs_diff"] = season_df["OSRS_team"] - season_df["OSRS_opp"]
+    season_df["dsrs_diff"] = season_df["DSRS_team"] - season_df["DSRS_opp"]
+    season_df["pypa_diff"] = season_df["PYPA_team"] - season_df["PYPA_opp"]
+    season_df["rypa_diff"] = season_df["RYPA_team"] - season_df["RYPA_opp"]
+    season_df["pts_off_diff"] = season_df["Pts_off_team"] - season_df["Pts_off_opp"]
+    season_df["pts_def_diff"] = season_df["Pts_def_team"] - season_df["Pts_def_opp"]
+
+    feature_cols = [
+        "tsrs_diff", "osrs_diff", "dsrs_diff",
+        "pypa_diff", "rypa_diff",
+        "pts_off_diff", "pts_def_diff",
+    ]
+
+    X = season_df[feature_cols]
+    y = season_df["actual_margin"]
+
+    model = Pipeline([
+        ("scaler", StandardScaler()),
+        ("rf", RandomForestRegressor(
+            n_estimators=800,
+            max_depth=14,
+            random_state=42
+        ))
+    ])
+
+    model.fit(X, y)
+    return model, feature_cols
+
+
+
+def get_week_picks_singleweek_ncaaf(week_number):
+    spreads = load_week_spreads_ncaaf(week_number)
+    games   = merge_matchups_ncaaf(spreads, team_master_ncaaf)
+
+    games = games[games["Team"] < games["Opp"]].copy()
+
+    feats   = create_features_ncaaf(games)
+    model, feature_cols = train_model_ncaaf(feats)
+    preds   = predict_games_ncaaf(model, feats, feature_cols)
+
+    preds   = add_recommended_pick_ncaaf(preds)
+    preds   = confidence_tiers_ncaaf(preds)
+    return preds
+
+def get_week_picks_multiweek_ncaaf(week_number):
+    model, feature_cols = train_multiweek_model_ncaaf(week_number)
+
+    # If no past data → fallback
+    if model is None:
+        return get_week_picks_singleweek_ncaaf(week_number)
+
+    spreads = load_week_spreads_ncaaf(week_number)
+    games   = merge_matchups_ncaaf(spreads, team_master_ncaaf)
+    st.write("TEAM MASTER COLUMNS:", team_master_ncaaf.columns.tolist())
+    st.dataframe(team_master_ncaaf.head())
+
+    games = games[games["Team"] < games["Opp"]].copy()
+
+    feats = create_features_ncaaf(games)
+
+    # Raw model prediction (predicted margin)
+    raw_pred = model.predict(feats[feature_cols])
+
+    # Vegas margin = spread_value
+    vegas_margin = feats["spread_value"]
+
+    # 70/30 blend (NFL-style)
+    feats["model_pred"] = (0.6 * raw_pred) + (0.4 * vegas_margin)
+
+    # ATS edge using blended prediction
+    feats["edge"] = feats["model_pred"] - feats["spread_value"]
+
+    feats = add_recommended_pick_ncaaf(feats)
+    feats = confidence_tiers_ncaaf(feats)
+
+
+    return feats
+
+def get_week_picks_ncaaf(week_number):
+    if week_number < 0:
+        return get_week_picks_singleweek_ncaaf(week_number)
+    else:
+        return get_week_picks_multiweek_ncaaf(week_number)
+
+# Auto-detect available NCAA weeks based on spreads files
+available_weeks = []
+
+import os
+for wk in range(0, 19):  # NCAA weeks
+    path = os.path.join(DATA, f"Week{wk}_Spreads.csv")
+    if os.path.exists(path):
+        available_weeks.append(wk)
+
+# If no spreads exist yet
+if len(available_weeks) == 0:
+    st.error("No NCAA spreads files found.")
+    st.stop()
+
+# Default to the most recent week
+default_week = max(available_weeks)
+
+
+import streamlit as st
+
+st.set_page_config(page_title="NCAA Model Picks", page_icon="🏈", layout="wide")
+st.title("🏈 Deanomites 2026' NCAA Weekly Picks")
+
+# -----------------------------------------
+# Auto-detect latest completed week
+# -----------------------------------------
+current_week = 1
+completed_week = 0
+
+for wk in range(0, 19):
+    spreads_path  = os.path.join(DATA, f"Week{wk}_Spreads.csv")
+    results_path  = os.path.join(DATA, f"Week{wk}_Results.csv")
+
+    if os.path.exists(spreads_path):
+        current_week = wk
+
+    if os.path.exists(results_path):
+        completed_week = wk
+
+
+week_number = current_week
+st.sidebar.success(f"Current Week: {week_number}")
+
+run_button  = st.sidebar.button("Run NCAA Model")
+
+if run_button:
+
+
+
+    # ---------------------------------------------------------
+    # Build training data for PRIOR WEEK (not current week)
+    # ---------------------------------------------------------
+    if week_number > -1:
+        prev_week = week_number - 1
+        training_df = build_training_data_ncaaf(prev_week)
+
+        if training_df is not None:
+            save_path = os.path.join(DATA, f"Week{prev_week}_Training.xlsx")
+            training_df.to_excel(save_path, index=False)
+            st.sidebar.success(f"NCAA training data saved for Week {prev_week}")
+        else:
+            st.sidebar.info(f"No NCAA training data available yet for Week {prev_week}")
+
+    # ---------------------------------------------------------
+    # Run NCAA model (single-week or multi-week)
+    # ---------------------------------------------------------
+    results = get_week_picks_ncaaf(week_number)
+
+
+    st.dataframe(
+        results[[
+            "Team", "Opp",
+            "spread_value",
+            "model_pred",
+            "edge",
+            "confidence",
+            "recommended_pick"
+        ]],
+        use_container_width=True
+    )
+
+    # -----------------------------
+    # Download CSV Button (NCAA)
+    # -----------------------------
+    export_df = results.copy()
+
+    csv_data = export_df.to_csv(index=False).encode("utf-8")
+
+    st.download_button(
+        label="Download NCAA Picks as CSV",
+        data=csv_data,
+        file_name=f"Week{week_number}_NCAA_Picks.csv",
+        mime="text/csv",
+        key=f"download_picks_csv_week_{week_number}"
+    )
+
+
+st.markdown(
+    """
+    <a href="mailto:deanomite@gmail.com" style="text-decoration:none;">
+        <button style="
+            background-color:#4CAF50;
+            color:white;
+            padding:10px 20px;
+            border:none;
+            border-radius:5px;
+            cursor:pointer;
+            font-size:16px;">
+            📧 Email Deanomite for Questions or Comments
+        </button>
+    </a>
+    """,
+    unsafe_allow_html=True
+)
+
