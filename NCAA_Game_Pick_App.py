@@ -108,8 +108,8 @@ def predict_games_ncaaf(feats):
         + (feats["dsrs_diff"]  * 0.10)
         + (feats["pypa_diff"]  * 0.15)
         + (feats["rypa_diff"]  * 0.15)
-        + (feats["pts_off_diff"] * 0.30)
-        - (feats["pts_def_diff"] * 0.30)
+        + (feats["pts_off_diff"] * 0.70)
+        - (feats["pts_def_diff"] * 0.70)
         + (feats["sos_diff_norm"] * 0.30)
     )
 
