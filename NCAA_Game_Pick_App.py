@@ -103,14 +103,14 @@ def predict_games_ncaaf(feats):
             raise KeyError("No spread_value or spread_value_x column available for edge calculation")
 
     feats["model_pred"] = (
-        (feats["tsrs_diff"]    * 0.30)
-        + (feats["osrs_diff"]  * 0.10)
-        + (feats["dsrs_diff"]  * 0.10)
+        (feats["tsrs_diff"]    * 0.50)
+        + (feats["osrs_diff"]  * 0.20)
+        + (feats["dsrs_diff"]  * 0.20)
         + (feats["pypa_diff"]  * 0.15)
         + (feats["rypa_diff"]  * 0.15)
         + (feats["pts_off_diff"] * 0.70)
         - (feats["pts_def_diff"] * 0.70)
-        + (feats["sos_diff_norm"] * 0.30)
+        + (feats["sos_diff_norm"] * 0.50)
     )
 
     feats["edge"] = feats["model_pred"] - feats["spread_value"]
