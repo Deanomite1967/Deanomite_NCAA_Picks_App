@@ -136,7 +136,7 @@ def add_recommended_pick(df):
         home_team = opp
         home_is_fav = vegas > 0
 
-        if home_is_fav and abs(edge) <= 5.0:
+        if home_is_fav and abs(edge) <= 6.0:
             pick_side = home_team
             pick_spread = -vegas
             picks.append(f"{pick_side} {pick_spread:+.1f}")
