@@ -421,7 +421,6 @@ if run_button:
             "spread_value",
             "model_pred",
             "edge",
-            "confidence",
             "recommended_pick"
         ]],
         use_container_width=True
