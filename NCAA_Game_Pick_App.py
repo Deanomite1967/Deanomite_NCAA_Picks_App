@@ -157,7 +157,7 @@ def add_recommended_pick(df):
             fav_spread = -vegas
 
         # 1️⃣ If edge is small → pick the favorite
-        if abs(edge) <= 5.5:
+        if abs(edge) <= 2.5:
             picks.append(f"{favorite} {fav_spread:+.1f}")
             continue
 
